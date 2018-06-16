@@ -92,6 +92,18 @@ func (s *Session) Connect(connectionString string) *Error {
 	return s.LastError
 }
 
+// Closes the underlying connection to the node
+func (s *Session) Close() *Error {
+	s.LastError = nil
+	if s.connected {
+		err := s.connection.Close()
+		if err != nil {
+			s.LastError = &Error{1, err.Error(), "Connection"}
+		}
+	}
+	return s.LastError
+}
+
 // Updates the write deadline
 func (s *Session) updateWriteDeadline() {
 	s.connection.SetWriteDeadline(time.Now().Add(time.Duration(s.TimeoutReadWrite) * time.Second))
@@ -128,7 +140,6 @@ func (s *Session) Query(query proto.Message, response proto.Message) (proto.Mess
 
 			// TODO: write reserved uint32
 
-			log.Printf("Header is %d bytes", len(header_data))
 			var buf_len [4]byte
 			binary.BigEndian.PutUint32(buf_len[:], uint32(len(header_data)))
 
@@ -186,8 +197,6 @@ func (s *Session) Query(query proto.Message, response proto.Message) (proto.Mess
 												err := proto.Unmarshal(buf_response, response)
 												if err != nil {
 													s.LastError = &Error{1, err.Error(), "Network"}
-												} else {
-													log.Println("GOT RESPONSE: " + response.String())
 												}
 											}
 										}

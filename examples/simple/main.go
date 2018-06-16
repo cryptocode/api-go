@@ -41,8 +41,9 @@ func main() {
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {
-			fmt.Println("Count is ", pending.Count)
+			fmt.Println(result.String())
 		}
 	}
+	session.Close()
 	fmt.Println("Done")
 }
