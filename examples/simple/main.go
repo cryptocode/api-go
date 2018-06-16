@@ -22,11 +22,11 @@ func main() {
 		connectionString = os.Args[1]
 	}
 
-	s := &nano_client.Session{}
-	s.TimeoutConnection = 2
+	session := &nano_client.Session{}
+	session.TimeoutConnection = 2
 
-	if s.Connect(connectionString) != nil {
-		log.Println(s.LastError.Error())
+	if session.Connect(connectionString) != nil {
+		log.Println(session.LastError.Error())
 	} else {
 		pending := &nano_api.QueryAccountPending{
 			Count:     10,
@@ -37,7 +37,7 @@ func main() {
 		}
 		result := &nano_api.ResAccountPending{}
 
-		_, err := s.Query(pending, result)
+		_, err := session.Query(pending, result)
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {
