@@ -30,6 +30,7 @@ func main() {
 	} else {
 		pending := &nano_api.ReqAccountPending{
 			Count:     10,
+			Source:    true,
 			Threshold: &wrappers.StringValue{Value: "20000000000"},
 			Accounts: []string{
 				"xrb_1111111111111111111111111111111111111111111111111111hifc8npp",

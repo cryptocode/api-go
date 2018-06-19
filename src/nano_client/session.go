@@ -129,7 +129,7 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 			Type: nano_api.RequestType(nano_api.RequestType_value[request_type]),
 		}
 
-		if request_header.Type == nano_api.RequestType_UNKOWN {
+		if request_header.Type == nano_api.RequestType_INVALID {
 			panic("Invalid request type:" + request_type)
 		}
 
@@ -138,8 +138,11 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 			s.LastError = &Error{1, err.Error(), "Marshalling"}
 		} else {
 
-			// TODO: write reserved uint32
-
+			preamble := [4]byte{'N', 0, 1 /* Major*/, 0 /*Minor*/}
+			_, err = s.connection.Write(preamble[:])
+			if err != nil {
+				s.LastError = &Error{1, err.Error(), "Marshalling"}
+			}
 			var buf_len [4]byte
 			binary.BigEndian.PutUint32(buf_len[:], uint32(len(header_data)))
 
