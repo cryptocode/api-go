@@ -114,26 +114,26 @@ func (s *Session) updateReadDeadline() {
 	s.connection.SetReadDeadline(time.Now().Add(time.Duration(s.TimeoutReadWrite) * time.Second))
 }
 
-// Query the node. The session must be connected.
+// Send request to the node. The session must be connected.
 // Returns a message representing the result or an error.
-func (s *Session) Query(query proto.Message, response proto.Message) (proto.Message, *Error) {
+func (s *Session) Request(request proto.Message, response proto.Message) (proto.Message, *Error) {
 	s.LastError = nil
 	var result proto.Message = nil
 	if !s.connected {
 		s.LastError = &Error{1, "Not connected", "Network"}
 	} else {
-		query_type := strings.ToUpper(strings.Replace(proto.MessageName(query), "nano.api.query_", "", 1))
-		log.Println(query_type + ":" + strconv.FormatInt(int64(nano_api.QueryType_value[query_type]), 10))
+		request_type := strings.ToUpper(strings.Replace(proto.MessageName(request), "nano.api.req_", "", 1))
+		log.Println(request_type + ":" + strconv.FormatInt(int64(nano_api.RequestType_value[request_type]), 10))
 
-		query_header := &nano_api.Query{
-			Type: nano_api.QueryType(nano_api.QueryType_value[query_type]),
+		request_header := &nano_api.Request{
+			Type: nano_api.RequestType(nano_api.RequestType_value[request_type]),
 		}
 
-		if query_header.Type == nano_api.QueryType_UNKOWN {
-			panic("Invalid query type:" + query_type)
+		if request_header.Type == nano_api.RequestType_UNKOWN {
+			panic("Invalid request type:" + request_type)
 		}
 
-		header_data, err := proto.Marshal(query_header)
+		header_data, err := proto.Marshal(request_header)
 		if err != nil {
 			s.LastError = &Error{1, err.Error(), "Marshalling"}
 		} else {
@@ -145,13 +145,15 @@ func (s *Session) Query(query proto.Message, response proto.Message) (proto.Mess
 
 			s.updateWriteDeadline()
 			_, err := s.connection.Write(buf_len[:])
+			// TEST NODE TIMEOUT
+			// time.Sleep(3 * time.Second)
 			if err != nil {
 				s.LastError = &Error{1, err.Error(), "Network"}
 			} else {
 				s.updateWriteDeadline()
 				_, err = s.connection.Write(header_data[:])
 
-				msg_buffer, err := proto.Marshal(query)
+				msg_buffer, err := proto.Marshal(request)
 				if err != nil {
 					s.LastError = &Error{1, err.Error(), "Marshalling"}
 				} else {

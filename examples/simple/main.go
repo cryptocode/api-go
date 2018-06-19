@@ -28,7 +28,7 @@ func main() {
 	if session.Connect(connectionString) != nil {
 		log.Println(session.LastError.Error())
 	} else {
-		pending := &nano_api.QueryAccountPending{
+		pending := &nano_api.ReqAccountPending{
 			Count:     10,
 			Threshold: &wrappers.StringValue{Value: "20000000000"},
 			Accounts: []string{
@@ -37,7 +37,7 @@ func main() {
 		}
 		result := &nano_api.ResAccountPending{}
 
-		_, err := session.Query(pending, result)
+		_, err := session.Request(pending, result)
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {
