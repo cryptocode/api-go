@@ -104,14 +104,36 @@ func (s *Session) Close() *Error {
 	return s.LastError
 }
 
-// Updates the write deadline
+// Updates the write deadline using Session#TimeoutReadWrite
 func (s *Session) updateWriteDeadline() {
 	s.connection.SetWriteDeadline(time.Now().Add(time.Duration(s.TimeoutReadWrite) * time.Second))
 }
 
-// Updates the read deadline
+// Updates the read deadline using Session#TimeoutReadWrite
 func (s *Session) updateReadDeadline() {
 	s.connection.SetReadDeadline(time.Now().Add(time.Duration(s.TimeoutReadWrite) * time.Second))
+}
+
+// An error-safe call chain
+type CallChain struct {
+	err *Error
+}
+
+// Calls the callback if there are no errors. The callback should set the CallChain#err property on error */
+func (sc *CallChain) do(fn func()) *CallChain {
+	if sc.err == nil {
+		fn()
+	}
+
+	return sc
+}
+
+// Calls the callback if there's an error
+func (sc *CallChain) failure(fn func()) *CallChain {
+	if sc.err != nil {
+		fn()
+	}
+	return sc
 }
 
 // Send request to the node. The session must be connected.
@@ -122,6 +144,15 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 	if !s.connected {
 		s.LastError = &Error{1, "Not connected", "Network"}
 	} else {
+		sc := &CallChain{}
+
+		var buf_len [4]byte
+		var msg_buffer []byte
+		var buf_response_header []byte
+		var buf_response []byte
+		var err error
+		var header_data []byte
+
 		request_type := strings.ToUpper(strings.Replace(proto.MessageName(request), "nano.api.req_", "", 1))
 		log.Println(request_type + ":" + strconv.FormatInt(int64(nano_api.RequestType_value[request_type]), 10))
 
@@ -133,86 +164,78 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 			panic("Invalid request type:" + request_type)
 		}
 
-		header_data, err := proto.Marshal(request_header)
-		if err != nil {
-			s.LastError = &Error{1, err.Error(), "Marshalling"}
-		} else {
-
+		sc.do(func() {
 			preamble := [4]byte{'N', 0, 1 /* Major*/, 0 /*Minor*/}
-			_, err = s.connection.Write(preamble[:])
-			if err != nil {
-				s.LastError = &Error{1, err.Error(), "Marshalling"}
+			if _, err = s.connection.Write(preamble[:]); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
 			}
-			var buf_len [4]byte
+		}).do(func() {
+			if header_data, err = proto.Marshal(request_header); err != nil {
+				sc.err = &Error{1, err.Error(), "Marshalling"}
+			}
+		}).do(func() {
 			binary.BigEndian.PutUint32(buf_len[:], uint32(len(header_data)))
-
 			s.updateWriteDeadline()
-			_, err := s.connection.Write(buf_len[:])
-			// TEST NODE TIMEOUT
-			// time.Sleep(3 * time.Second)
-			if err != nil {
-				s.LastError = &Error{1, err.Error(), "Network"}
-			} else {
-				s.updateWriteDeadline()
-				_, err = s.connection.Write(header_data[:])
-
-				msg_buffer, err := proto.Marshal(request)
-				if err != nil {
-					s.LastError = &Error{1, err.Error(), "Marshalling"}
-				} else {
-					binary.BigEndian.PutUint32(buf_len[:], uint32(len(msg_buffer)))
-					s.updateWriteDeadline()
-					_, err := s.connection.Write(buf_len[:])
-					if err != nil {
-						s.LastError = &Error{1, err.Error(), "Network"}
-					} else {
-						s.updateWriteDeadline()
-						_, err := s.connection.Write(msg_buffer[:])
-						if err != nil {
-							s.LastError = &Error{1, err.Error(), "Network"}
-						} else {
-							// Get result
-							s.updateReadDeadline()
-							_, err := io.ReadFull(s.connection, buf_len[:])
-							if err != nil {
-								s.LastError = &Error{1, err.Error(), "Network"}
-							} else {
-								buf_response_header := make([]byte, binary.BigEndian.Uint32(buf_len[:]))
-								s.updateReadDeadline()
-								_, err := io.ReadFull(s.connection, buf_response_header)
-								if err != nil {
-									s.LastError = &Error{1, err.Error(), "Network"}
-								} else {
-									resp_header := &nano_api.Response{}
-									err := proto.Unmarshal(buf_response_header, resp_header)
-									if err != nil {
-										s.LastError = &Error{1, err.Error(), "Network"}
-									} else {
-										s.updateReadDeadline()
-										_, err := io.ReadFull(s.connection, buf_len[:])
-										if err != nil {
-											s.LastError = &Error{1, err.Error(), "Network"}
-										} else {
-											buf_response := make([]byte, binary.BigEndian.Uint32(buf_len[:]))
-											s.updateReadDeadline()
-											_, err := io.ReadFull(s.connection, buf_response)
-											if err != nil {
-												s.LastError = &Error{1, err.Error(), "Network"}
-											} else {
-												err := proto.Unmarshal(buf_response, response)
-												if err != nil {
-													s.LastError = &Error{1, err.Error(), "Network"}
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
+			if _, err = s.connection.Write(buf_len[:]); err != nil {
+				// TEST NODE TIMEOUT
+				// time.Sleep(3 * time.Second)
+				sc.err = &Error{1, err.Error(), "Network"}
 			}
-		}
+		}).do(func() {
+			s.updateWriteDeadline()
+			if _, err = s.connection.Write(header_data[:]); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			}
+		}).do(func() {
+			if msg_buffer, err = proto.Marshal(request); err != nil {
+				sc.err = &Error{1, err.Error(), "Marshalling"}
+			}
+		}).do(func() {
+			binary.BigEndian.PutUint32(buf_len[:], uint32(len(msg_buffer)))
+			s.updateWriteDeadline()
+			if _, err = s.connection.Write(buf_len[:]); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			}
+		}).do(func() {
+			s.updateWriteDeadline()
+			if _, err = s.connection.Write(msg_buffer[:]); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			}
+		}).do(func() {
+			// Get result
+			s.updateReadDeadline()
+			if _, err = io.ReadFull(s.connection, buf_len[:]); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			}
+		}).do(func() {
+			buf_response_header = make([]byte, binary.BigEndian.Uint32(buf_len[:]))
+			s.updateReadDeadline()
+			if _, err = io.ReadFull(s.connection, buf_response_header); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			}
+		}).do(func() {
+			resp_header := &nano_api.Response{}
+			if err = proto.Unmarshal(buf_response_header, resp_header); err != nil {
+				sc.err = &Error{1, err.Error(), "Marshalling"}
+			}
+		}).do(func() {
+			s.updateReadDeadline()
+			if _, err = io.ReadFull(s.connection, buf_len[:]); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			}
+		}).do(func() {
+			buf_response = make([]byte, binary.BigEndian.Uint32(buf_len[:]))
+			s.updateReadDeadline()
+			if _, err = io.ReadFull(s.connection, buf_response); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			}
+		}).do(func() {
+			if err = proto.Unmarshal(buf_response, response); err != nil {
+				sc.err = &Error{1, err.Error(), "Marshalling"}
+			}
+		}).failure(func() {
+			s.LastError = sc.err
+		})
 	}
 	return result, s.LastError
 }
