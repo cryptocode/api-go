@@ -124,7 +124,6 @@ func (sc *CallChain) do(fn func()) *CallChain {
 	if sc.err == nil {
 		fn()
 	}
-
 	return sc
 }
 
@@ -139,6 +138,11 @@ func (sc *CallChain) failure(fn func()) *CallChain {
 // Send request to the node. The session must be connected.
 // Returns a message representing the result or an error.
 func (s *Session) Request(request proto.Message, response proto.Message) (proto.Message, *Error) {
+
+	// Protobuf encoding
+	const PROTOCOL_ENCODING = 0
+	const PROTOCOL_PREAMBLE_LEAD = 'N'
+
 	s.LastError = nil
 	var result proto.Message = nil
 	if !s.connected {
@@ -146,11 +150,12 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 	} else {
 		sc := &CallChain{}
 
+		var err error
+		var preamble [4]byte
 		var buf_len [4]byte
 		var msg_buffer []byte
 		var buf_response_header []byte
 		var buf_response []byte
-		var err error
 		var header_data []byte
 
 		request_type := strings.ToUpper(strings.Replace(proto.MessageName(request), "nano.api.req_", "", 1))
@@ -165,7 +170,11 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 		}
 
 		sc.do(func() {
-			preamble := [4]byte{'N', 0, 1 /* Major*/, 0 /*Minor*/}
+			preamble = [4]byte{
+				PROTOCOL_PREAMBLE_LEAD,
+				PROTOCOL_ENCODING,
+				byte(nano_api.APIVersion_VERSION_MAJOR),
+				byte(nano_api.APIVersion_VERSION_MINOR)}
 			if _, err = s.connection.Write(preamble[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
@@ -202,7 +211,18 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
-			// Get result
+			// Read and verify preamble
+			s.updateReadDeadline()
+			if _, err = io.ReadFull(s.connection, preamble[:]); err != nil {
+				sc.err = &Error{1, err.Error(), "Network"}
+			} else {
+				if preamble[0] != PROTOCOL_PREAMBLE_LEAD || preamble[1] != PROTOCOL_ENCODING {
+					sc.err = &Error{1, "Invalid preamble", "Network"}
+				} else if preamble[2] > 1 {
+					sc.err = &Error{1, "Unsupported API version", "API"}
+				}
+			}
+		}).do(func() {
 			s.updateReadDeadline()
 			if _, err = io.ReadFull(s.connection, buf_len[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
