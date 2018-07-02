@@ -20,6 +20,7 @@ const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 // * Check if the supplied address is correct
 type ReqAddressValid struct {
+	// * Address to check, such as xrb_... and nano_...
 	Address              string   `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -30,7 +31,7 @@ func (m *ReqAddressValid) Reset()         { *m = ReqAddressValid{} }
 func (m *ReqAddressValid) String() string { return proto.CompactTextString(m) }
 func (*ReqAddressValid) ProtoMessage()    {}
 func (*ReqAddressValid) Descriptor() ([]byte, []int) {
-	return fileDescriptor_util_18e71b149483b96a, []int{0}
+	return fileDescriptor_util_1a356d579047c4b7, []int{0}
 }
 func (m *ReqAddressValid) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ReqAddressValid.Unmarshal(m, b)
@@ -59,7 +60,9 @@ func (m *ReqAddressValid) GetAddress() string {
 
 // * Address check result. If invalid, the message string contains the reason.
 type ResAddressValid struct {
-	Valid                bool     `protobuf:"varint,1,opt,name=valid,proto3" json:"valid,omitempty"`
+	// * True if the address is valid
+	Valid bool `protobuf:"varint,1,opt,name=valid,proto3" json:"valid,omitempty"`
+	// * The reason the address is invalid. May be empty.
 	Reason               string   `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -70,7 +73,7 @@ func (m *ResAddressValid) Reset()         { *m = ResAddressValid{} }
 func (m *ResAddressValid) String() string { return proto.CompactTextString(m) }
 func (*ResAddressValid) ProtoMessage()    {}
 func (*ResAddressValid) Descriptor() ([]byte, []int) {
-	return fileDescriptor_util_18e71b149483b96a, []int{1}
+	return fileDescriptor_util_1a356d579047c4b7, []int{1}
 }
 func (m *ResAddressValid) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ResAddressValid.Unmarshal(m, b)
@@ -109,9 +112,9 @@ func init() {
 	proto.RegisterType((*ResAddressValid)(nil), "nano.api.res_address_valid")
 }
 
-func init() { proto.RegisterFile("util.proto", fileDescriptor_util_18e71b149483b96a) }
+func init() { proto.RegisterFile("util.proto", fileDescriptor_util_1a356d579047c4b7) }
 
-var fileDescriptor_util_18e71b149483b96a = []byte{
+var fileDescriptor_util_1a356d579047c4b7 = []byte{
 	// 120 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x2a, 0x2d, 0xc9, 0xcc,
 	0xd1, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0xc8, 0x4b, 0xcc, 0xcb, 0xd7, 0x4b, 0x2c, 0xc8,
