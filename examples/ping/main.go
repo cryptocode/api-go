@@ -6,8 +6,7 @@ import (
 	"nano_api"
 	"nano_client"
 	"os"
-
-	"github.com/golang/protobuf/ptypes/wrappers"
+	"time"
 )
 
 // Connect to a Nano node and submit a pending accounts query
@@ -26,21 +25,22 @@ func main() {
 		log.Println(session.LastError.Error())
 	} else {
 		defer session.Close()
-		pending := &nano_api.ReqAccountPending{
-			Count:     10,
-			Source:    true,
-			Threshold: &wrappers.StringValue{Value: "20000000000"},
-			Accounts: []string{
-				"xrb_1111111111111111111111111111111111111111111111111111hifc8npp",
-				"xrb_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3"},
-		}
-		result := &nano_api.ResAccountPending{}
 
-		_, err := session.Request(pending, result)
-		if err != nil {
-			fmt.Println(err.Error())
-		} else {
-			fmt.Println(result.String())
+		log.Printf("Ping loop in progress...")
+		start := time.Now()
+		for i := 0; i < 10000; i++ {
+			ping := &nano_api.ReqPing{
+				Id: 1000,
+			}
+			pong := &nano_api.ResPing{}
+
+			_, err := session.Request(ping, pong)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
 		}
+
+		elapsed := time.Since(start)
+		log.Printf("Pings latecy: %s", elapsed/10000)
 	}
 }

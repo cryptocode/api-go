@@ -11,6 +11,7 @@ git clone https://gitcom.com/nanoapi/api-go
 cd api-go
 export $GOPATH=`pwd`
 go get -u github.com/golang/protobuf/{proto,protoc-gen-go}
+go install nano_api
 ```
 
 # Updating the client after Protobuf changes

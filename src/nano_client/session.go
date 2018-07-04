@@ -5,11 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"nano_api"
 	"net"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -159,7 +157,7 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 		var header_data []byte
 
 		request_type := strings.ToUpper(strings.Replace(proto.MessageName(request), "nano.api.req_", "", 1))
-		log.Println(request_type + ":" + strconv.FormatInt(int64(nano_api.RequestType_value[request_type]), 10))
+		// log.Println(request_type + ":" + strconv.FormatInt(int64(nano_api.RequestType_value[request_type]), 10))
 
 		request_header := &nano_api.Request{
 			Type: nano_api.RequestType(nano_api.RequestType_value[request_type]),
