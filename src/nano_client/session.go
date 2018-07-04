@@ -14,8 +14,8 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
-// Encapsulates error state. The error code is non-zero for valid errors, and
-// message and category are usually set for errors trasmitted by the node.
+// Encapsulates error state. The code is non-zero to indicate errors, and
+// message and category are usually set for errors transmitted by the node.
 // Implements the Go error interface.
 type Error struct {
 	Code     int
@@ -34,7 +34,9 @@ func (e *Error) Error() string {
 	}
 }
 
-// Represents a session with a Nano node
+// Represents a session with a Nano node.
+// Do not share sessions between threads; create a Session
+// per thread instead.
 type Session struct {
 	connection net.Conn
 	connected  bool
@@ -47,7 +49,7 @@ type Session struct {
 }
 
 // Connect to a node. You can set Session#TimeoutConnection before this call, otherwise a default
-// of 10 seconds is used.
+// of 15 seconds is used.
 // connectionString is an URI of the form tcp://host:port or local:///path/to/domainsocketfile
 func (s *Session) Connect(connectionString string) *Error {
 	s.LastError = nil
@@ -65,9 +67,8 @@ func (s *Session) Connect(connectionString string) *Error {
 			s.LastError = &Error{1, "Invalid schema: Use tcp or local.", "Connection"}
 		}
 
-		// Use a default of 10s if not set by user
 		if s.TimeoutConnection == 0 {
-			s.TimeoutConnection = 10
+			s.TimeoutConnection = 15
 		}
 		if s.TimeoutReadWrite == 0 {
 			s.TimeoutReadWrite = 30
@@ -184,8 +185,6 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 			binary.BigEndian.PutUint32(buf_len[:], uint32(len(header_data)))
 			s.updateWriteDeadline()
 			if _, err = s.connection.Write(buf_len[:]); err != nil {
-				// TEST NODE TIMEOUT
-				// time.Sleep(3 * time.Second)
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
