@@ -41,6 +41,6 @@ func main() {
 		}
 
 		elapsed := time.Since(start)
-		log.Printf("Pings latecy: %s", elapsed/10000)
+		log.Printf("Avg. ping roundtrip time including marshalling: %s", elapsed/10000)
 	}
 }
