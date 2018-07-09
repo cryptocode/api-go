@@ -1,0 +1,8 @@
+{
+	"port": 8080,
+	"hostname": "localhost",
+	"node": {
+		"connection": "tcp://localhost:7077",
+		"poolsize": 20
+	}
+}

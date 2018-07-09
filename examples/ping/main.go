@@ -34,7 +34,7 @@ func main() {
 			}
 			pong := &nano_api.ResPing{}
 
-			_, err := session.Request(ping, pong)
+			err := session.Request(ping, pong)
 			if err != nil {
 				fmt.Println(err.Error())
 			}

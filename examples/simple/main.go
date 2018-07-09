@@ -36,7 +36,7 @@ func main() {
 		}
 		result := &nano_api.ResAccountPending{}
 
-		_, err := session.Request(pending, result)
+		err := session.Request(pending, result)
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {

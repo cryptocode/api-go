@@ -9,13 +9,15 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 )
 
-// Encapsulates error state. The code is non-zero to indicate errors, and
-// message and category are usually set for errors transmitted by the node.
+// Error encapsulates the error code, message and category.
+// The Code is non-zero to indicate errors. Message and
+// Category are usually set for errors transmitted by the node.
 // Implements the Go error interface.
 type Error struct {
 	Code     int
@@ -34,14 +36,12 @@ func (e *Error) Error() string {
 	}
 }
 
-// Represents a session with a Nano node.
-// Do not share sessions between threads; create a Session
-// per thread instead.
+// A Session with a Nano node.
 type Session struct {
+	mutex      sync.Mutex
 	connection net.Conn
-	connected  bool
-	// The last error or nil. This is reset on every call on the Session.
-	LastError *Error
+	// True if the session has been connected to the node
+	Connected bool
 	// Read and Write timeout. Default is 30 seconds.
 	TimeoutReadWrite int
 	// Connection timeout. Default is 10 seconds.
@@ -52,11 +52,10 @@ type Session struct {
 // of 15 seconds is used.
 // connectionString is an URI of the form tcp://host:port or local:///path/to/domainsocketfile
 func (s *Session) Connect(connectionString string) *Error {
-	s.LastError = nil
-
+	var connError *Error
 	uri, err := url.Parse(connectionString)
 	if err != nil {
-		s.LastError = &Error{1, "Invalid connection string", "Connection"}
+		connError = &Error{1, "Invalid connection string", "Connection"}
 	} else {
 		scheme := uri.Scheme
 		host := uri.Host
@@ -64,7 +63,7 @@ func (s *Session) Connect(connectionString string) *Error {
 			scheme = "unix"
 			host = uri.Path
 		} else if scheme != "tcp" {
-			s.LastError = &Error{1, "Invalid schema: Use tcp or local.", "Connection"}
+			connError = &Error{1, "Invalid schema: Use tcp or local.", "Connection"}
 		}
 
 		if s.TimeoutConnection == 0 {
@@ -80,27 +79,31 @@ func (s *Session) Connect(connectionString string) *Error {
 
 		con, err := dialContext(context.Background(), scheme, host)
 		if err != nil {
-			s.LastError = &Error{1, err.Error(), "Connection"}
-			s.connected = false
+			connError = &Error{1, err.Error(), "Connection"}
+			s.Connected = false
 		} else {
 			s.connection = con
-			s.connected = true
+			s.Connected = true
 		}
 	}
 
-	return s.LastError
+	return connError
 }
 
-// Closes the underlying connection to the node
+// Close the underlying connection to the node
 func (s *Session) Close() *Error {
-	s.LastError = nil
-	if s.connected {
-		err := s.connection.Close()
-		if err != nil {
-			s.LastError = &Error{1, err.Error(), "Connection"}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	var err *Error
+	if s.Connected {
+		s.Connected = false
+		closeErr := s.connection.Close()
+		if closeErr != nil {
+			err = &Error{1, closeErr.Error(), "Connection"}
 		}
 	}
-	return s.LastError
+	return err
 }
 
 // Updates the write deadline using Session#TimeoutReadWrite
@@ -113,12 +116,14 @@ func (s *Session) updateReadDeadline() {
 	s.connection.SetReadDeadline(time.Now().Add(time.Duration(s.TimeoutReadWrite) * time.Second))
 }
 
-// An error-safe call chain
+// A CallChain allows safe chaining of functions. If an error
+// occurs, the remaining functions in the chain are not called.
 type CallChain struct {
 	err *Error
 }
 
-// Calls the callback if there are no errors. The callback should set the CallChain#err property on error */
+// Calls the callback if there are no errors.
+// The callback should set the CallChain#err property on error */
 func (sc *CallChain) do(fn func()) *CallChain {
 	if sc.err == nil {
 		fn()
@@ -135,37 +140,38 @@ func (sc *CallChain) failure(fn func()) *CallChain {
 }
 
 // Send request to the node. The session must be connected.
-// Returns a message representing the result or an error.
-func (s *Session) Request(request proto.Message, response proto.Message) (proto.Message, *Error) {
+// This method is threadsafe.
+// The response output argument will contain the result if no error is returned.
+func (s *Session) Request(request proto.Message, response proto.Message) *Error {
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
 	// Protobuf encoding
 	const PROTOCOL_ENCODING = 0
 	const PROTOCOL_PREAMBLE_LEAD = 'N'
 
-	s.LastError = nil
-	var result proto.Message = nil
-	if !s.connected {
-		s.LastError = &Error{1, "Not connected", "Network"}
+	var err *Error
+	if !s.Connected {
+		err = &Error{1, "Not connected", "Network"}
 	} else {
 		sc := &CallChain{}
 
 		var err error
 		var preamble [4]byte
-		var buf_len [4]byte
-		var msg_buffer []byte
-		var buf_response_header []byte
-		var buf_response []byte
-		var header_data []byte
+		var bufLen [4]byte
+		var msgBuffer []byte
+		var bufResponseHeader []byte
+		var bufResponse []byte
+		var headerData []byte
 
-		request_type := strings.ToUpper(strings.Replace(proto.MessageName(request), "nano.api.req_", "", 1))
-		// log.Println(request_type + ":" + strconv.FormatInt(int64(nano_api.RequestType_value[request_type]), 10))
-
-		request_header := &nano_api.Request{
-			Type: nano_api.RequestType(nano_api.RequestType_value[request_type]),
+		requestType := strings.ToUpper(strings.Replace(proto.MessageName(request), "nano.api.req_", "", 1))
+		requestHeader := &nano_api.Request{
+			Type: nano_api.RequestType(nano_api.RequestType_value[requestType]),
 		}
 
-		if request_header.Type == nano_api.RequestType_INVALID {
-			panic("Invalid request type:" + request_type)
+		if requestHeader.Type == nano_api.RequestType_INVALID {
+			panic("Invalid request type:" + requestType)
 		}
 
 		sc.do(func() {
@@ -174,37 +180,38 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 				PROTOCOL_ENCODING,
 				byte(nano_api.APIVersion_VERSION_MAJOR),
 				byte(nano_api.APIVersion_VERSION_MINOR)}
+			s.updateWriteDeadline()
 			if _, err = s.connection.Write(preamble[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
-			if header_data, err = proto.Marshal(request_header); err != nil {
+			if headerData, err = proto.Marshal(requestHeader); err != nil {
 				sc.err = &Error{1, err.Error(), "Marshalling"}
 			}
 		}).do(func() {
-			binary.BigEndian.PutUint32(buf_len[:], uint32(len(header_data)))
+			binary.BigEndian.PutUint32(bufLen[:], uint32(len(headerData)))
 			s.updateWriteDeadline()
-			if _, err = s.connection.Write(buf_len[:]); err != nil {
+			if _, err = s.connection.Write(bufLen[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
 			s.updateWriteDeadline()
-			if _, err = s.connection.Write(header_data[:]); err != nil {
+			if _, err = s.connection.Write(headerData[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
-			if msg_buffer, err = proto.Marshal(request); err != nil {
+			if msgBuffer, err = proto.Marshal(request); err != nil {
 				sc.err = &Error{1, err.Error(), "Marshalling"}
 			}
 		}).do(func() {
-			binary.BigEndian.PutUint32(buf_len[:], uint32(len(msg_buffer)))
+			binary.BigEndian.PutUint32(bufLen[:], uint32(len(msgBuffer)))
 			s.updateWriteDeadline()
-			if _, err = s.connection.Write(buf_len[:]); err != nil {
+			if _, err = s.connection.Write(bufLen[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
 			s.updateWriteDeadline()
-			if _, err = s.connection.Write(msg_buffer[:]); err != nil {
+			if _, err = s.connection.Write(msgBuffer[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
@@ -221,42 +228,38 @@ func (s *Session) Request(request proto.Message, response proto.Message) (proto.
 			}
 		}).do(func() {
 			s.updateReadDeadline()
-			if _, err = io.ReadFull(s.connection, buf_len[:]); err != nil {
+			if _, err = io.ReadFull(s.connection, bufLen[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
-			buf_response_header = make([]byte, binary.BigEndian.Uint32(buf_len[:]))
+			bufResponseHeader = make([]byte, binary.BigEndian.Uint32(bufLen[:]))
 			s.updateReadDeadline()
-			if _, err = io.ReadFull(s.connection, buf_response_header); err != nil {
+			if _, err = io.ReadFull(s.connection, bufResponseHeader); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
-			resp_header := &nano_api.Response{}
-			if err = proto.Unmarshal(buf_response_header, resp_header); err != nil {
+			respHeader := &nano_api.Response{}
+			if err = proto.Unmarshal(bufResponseHeader, respHeader); err != nil {
 				sc.err = &Error{1, err.Error(), "Marshalling"}
 			}
 		}).do(func() {
 			s.updateReadDeadline()
-			if _, err = io.ReadFull(s.connection, buf_len[:]); err != nil {
+			if _, err = io.ReadFull(s.connection, bufLen[:]); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
-			buf_response = make([]byte, binary.BigEndian.Uint32(buf_len[:]))
+			bufResponse = make([]byte, binary.BigEndian.Uint32(bufLen[:]))
 			s.updateReadDeadline()
-			if _, err = io.ReadFull(s.connection, buf_response); err != nil {
+			if _, err = io.ReadFull(s.connection, bufResponse); err != nil {
 				sc.err = &Error{1, err.Error(), "Network"}
 			}
 		}).do(func() {
-			if err = proto.Unmarshal(buf_response, response); err != nil {
+			if err = proto.Unmarshal(bufResponse, response); err != nil {
 				sc.err = &Error{1, err.Error(), "Marshalling"}
 			}
 		}).failure(func() {
-			s.LastError = sc.err
+			err = sc.err
 		})
 	}
-	return result, s.LastError
-}
-
-func (s *Session) GetLastError() *Error {
-	return s.LastError
+	return err
 }
