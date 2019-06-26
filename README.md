@@ -6,10 +6,10 @@ This is the Go client for the Nano Node API
 
 Clone the repository and install the protoc plugin for Go:
 
-```
-git clone https://gitcom.com/nanoapi/api-go
+```bash
+git clone https://github.com/nanoapi/api-go
 cd api-go
-export $GOPATH=`pwd`
+export GOPATH=`pwd`
 go get -u github.com/golang/protobuf/{proto,protoc-gen-go}
 go install nano_api
 ```
@@ -18,7 +18,7 @@ go install nano_api
 
 If the Protobuf message specification has changed, a new Go source files can be generated using the following command:
 
-```
+```bash
 ci/protobuf-gen.sh
 ```
 
@@ -26,8 +26,8 @@ ci/protobuf-gen.sh
 
 Start a node with domain sockets activated and run:
 
-```
-export $GOPATH=`pwd`
+```bash
+export GOPATH=`pwd`
 cd examples/simple && go run main.go & cd -
 ```
 
