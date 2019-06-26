@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"nano_api"
 	"nano_client"
@@ -24,7 +23,7 @@ func main() {
 
 	err := session.Connect(connectionString)
 	if err != nil {
-		log.Println(err.Error())
+		log.Fatalln(err.Error())
 	} else {
 		defer session.Close()
 		pending := &nano_api.ReqAccountPending{
@@ -39,9 +38,10 @@ func main() {
 
 		err := session.Request(pending, result)
 		if err != nil {
-			fmt.Println(err.Error())
+			log.Fatalln(err.Error())
 		} else {
-			fmt.Println(result.String())
+			log.Println("Pending:", pending.String())
+			log.Println("Result:", result.String())
 		}
 	}
 }
