@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"nano_api"
 	"nano_client"
@@ -21,8 +20,9 @@ func main() {
 	session := &nano_client.Session{}
 	session.TimeoutConnection = 2
 
-	if session.Connect(connectionString) != nil {
-		log.Println(session.LastError.Error())
+	err := session.Connect(connectionString)
+	if err != nil {
+		log.Fatalln(err.Error())
 	} else {
 		defer session.Close()
 
@@ -36,11 +36,11 @@ func main() {
 
 			err := session.Request(ping, pong)
 			if err != nil {
-				fmt.Println(err.Error())
+				log.Fatalln(err.Error())
 			}
 		}
 
 		elapsed := time.Since(start)
-		log.Printf("Avg. ping roundtrip time including marshalling: %s", elapsed/10000)
+		log.Println("Avg. ping roundtrip time including marshalling: %s", elapsed/10000)
 	}
 }
