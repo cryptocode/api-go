@@ -22,8 +22,9 @@ func main() {
 	session := &nano_client.Session{}
 	session.TimeoutConnection = 2
 
-	if session.Connect(connectionString) != nil {
-		log.Println(session.LastError.Error())
+	err := session.Connect(connectionString)
+	if err != nil {
+		log.Println(err.Error())
 	} else {
 		defer session.Close()
 		pending := &nano_api.ReqAccountPending{
